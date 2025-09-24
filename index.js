@@ -464,6 +464,17 @@ app.post('/api/webhooks/revenuecat', async (req, res) => {
     if (event.expires_at_ms) console.log('- Expires At:', event.expires_at_ms ? new Date(event.expires_at_ms).toISOString() : 'null');
     if (event.cancelled_at_ms) console.log('- Cancelled At:', event.cancelled_at_ms ? new Date(event.cancelled_at_ms).toISOString() : 'null');
 
+    // Validate required fields FIRST
+    if (!event || !event.app_user_id) {
+      console.log('\n❌ VALIDATION FAILED:');
+      console.log('- Missing event:', !event);
+      console.log('- Missing app_user_id:', !event?.app_user_id);
+      return res.status(400).json({
+        error: 'Invalid payload',
+        message: 'Missing event or app_user_id'
+      });
+    }
+
     console.log('\n🔍 USER TYPE ANALYSIS:');
     const isAnonymous = event.app_user_id.startsWith('$RCAnonymousID:');
     console.log('- User ID:', event.app_user_id);
@@ -474,17 +485,6 @@ app.post('/api/webhooks/revenuecat', async (req, res) => {
     if (isAnonymous) {
       console.log('- 🚫 CANNOT STORE: Anonymous IDs are TEXT strings, not UUIDs');
       console.log('- 📋 WOULD NEED: Schema change to allow TEXT in app_user_id column');
-    }
-
-    // Validate required fields
-    if (!event || !event.app_user_id) {
-      console.log('\n❌ VALIDATION FAILED:');
-      console.log('- Missing event:', !event);
-      console.log('- Missing app_user_id:', !event?.app_user_id);
-      return res.status(400).json({
-        error: 'Invalid payload',
-        message: 'Missing event or app_user_id'
-      });
     }
 
     console.log('\n✅ VALIDATION PASSED: Required fields present');
