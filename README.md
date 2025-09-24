@@ -6,8 +6,9 @@ A Node.js Express server for handling RevenueCat webhooks and managing subscript
 
 - RevenueCat webhook processing for subscription events
 - Supabase integration for storing subscription and user data
-- Automatic premium status management
 - Support for all major subscription event types (INITIAL_PURCHASE, RENEWAL, CANCELLATION, etc.)
+- **Only processes authenticated users** (skips anonymous users since your schema requires UUID app_user_id)
+- **Comprehensive logging** - see exactly what RevenueCat sends and how edge cases are handled
 
 ## Getting Started
 
@@ -63,10 +64,12 @@ The webhook handler processes the following RevenueCat event types:
 
 ## Database Schema
 
+Your server works with your existing Supabase schema:
+
 ### subscriptions table
 ```sql
 - id (uuid, primary key)
-- app_user_id (text)
+- app_user_id (uuid, foreign key to auth.users.id) - Only authenticated users
 - entitlement_id (text)
 - product_id (text)
 - store (text)
@@ -84,22 +87,21 @@ The webhook handler processes the following RevenueCat event types:
 - raw_event (jsonb)
 - created_at (timestamp)
 - updated_at (timestamp)
+- UNIQUE(app_user_id, entitlement_id)
 ```
 
-### users table
-```sql
-- app_user_id (text, primary key)
-- is_premium (boolean)
-- premium_expires_at (timestamp)
-- premium_will_renew (boolean)
-- updated_at (timestamp)
-```
+## Anonymous User IDs
+
+**Your current schema does not support anonymous users** because `subscriptions.app_user_id` is a UUID foreign key to `auth.users(id)`.
+
+RevenueCat sends anonymous IDs like `$RCAnonymousID:{random_string}` which are TEXT strings, not UUIDs. Your server **skips all anonymous user webhooks** and only processes users who exist in `auth.users`.
+
+**To handle anonymous users, you would need to modify your schema** to allow TEXT values in `app_user_id` or create a separate table for anonymous subscriptions.
 
 ## Scripts
 
 - `npm start` - Start the server with Node.js
 - `npm run dev` - Start the server with nodemon for development
-- `npm test` - Run tests (not implemented yet)
 
 ## Project Structure
 
