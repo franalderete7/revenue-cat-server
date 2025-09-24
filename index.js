@@ -331,6 +331,10 @@ async function processSubscriptionEntitlement({
 
     console.log(`         🎉 Successfully processed ${type} event for user ${app_user_id}, entitlement ${entitlement_id}`);
 
+    // Update user's premium status in public.users table
+    console.log('\n         👤 UPDATING USER PREMIUM STATUS...');
+    await updateUserPremiumStatus(app_user_id);
+
   } catch (error) {
     console.log('         💥 SUBSCRIPTION PROCESSING ERROR:');
     console.log('            - Error Type:', error.constructor.name);
@@ -339,6 +343,79 @@ async function processSubscriptionEntitlement({
     if (error.details) console.log('            - Error Details:', error.details);
     if (error.hint) console.log('            - Error Hint:', error.hint);
     throw error;
+  }
+}
+
+async function updateUserPremiumStatus(appUserId) {
+  console.log('            🔍 Finding user by app_user_id:', appUserId);
+
+  try {
+    // Get all active subscriptions for this user
+    const { data: activeSubscriptions, error: subsError } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('app_user_id', appUserId)
+      .eq('is_active', true)
+      .order('expires_at', { ascending: false });
+
+    console.log('            - Active subscriptions query result:');
+    console.log('              - Error:', subsError ? subsError.message : 'null');
+    console.log('              - Count:', activeSubscriptions ? activeSubscriptions.length : 0);
+
+    if (subsError) {
+      throw subsError;
+    }
+
+    // Calculate premium status
+    const hasActiveSubscription = activeSubscriptions && activeSubscriptions.length > 0;
+    let premiumExpiresAt = null;
+    let premiumWillRenew = null;
+
+    if (hasActiveSubscription) {
+      const latestSubscription = activeSubscriptions[0];
+      premiumExpiresAt = latestSubscription.expires_at;
+      premiumWillRenew = latestSubscription.will_renew;
+    }
+
+    console.log('            📊 Calculated premium status:');
+    console.log('              - is_premium:', hasActiveSubscription);
+    console.log('              - premium_expires_at:', premiumExpiresAt);
+    console.log('              - premium_will_renew:', premiumWillRenew);
+
+    // Update the user in public.users table
+    console.log('            💾 Updating users table...');
+    const { data: updateResult, error: userUpdateError } = await supabase
+      .from('users')
+      .update({
+        is_premium: hasActiveSubscription,
+        premium_expires_at: premiumExpiresAt,
+        premium_will_renew: premiumWillRenew,
+        updated_at: new Date()
+      })
+      .eq('app_user_id', appUserId)
+      .select();
+
+    console.log('            - Update result:');
+    console.log('              - Updated rows:', updateResult ? updateResult.length : 0);
+    console.log('              - Error:', userUpdateError ? userUpdateError.message : 'null');
+
+    if (userUpdateError) {
+      console.log('            🚫 USER UPDATE FAILED:');
+      console.log('               - User may not exist in public.users table');
+      console.log('               - This is expected if user signed up but no public.users record was created');
+      console.log('               - Premium status will be updated when user record exists');
+    } else if (updateResult && updateResult.length > 0) {
+      console.log('            ✅ USER PREMIUM STATUS UPDATED SUCCESSFULLY');
+    } else {
+      console.log('            ⚠️  NO USER RECORD FOUND TO UPDATE');
+      console.log('               - User exists in auth.users but not in public.users');
+      console.log('               - Ensure your signup process creates public.users records');
+    }
+
+  } catch (error) {
+    console.log('            💥 USER PREMIUM STATUS UPDATE ERROR:');
+    console.log('               - Error:', error.message);
+    // Don't throw - this shouldn't break the webhook processing
   }
 }
 

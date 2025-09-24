@@ -90,6 +90,18 @@ Your server works with your existing Supabase schema:
 - UNIQUE(app_user_id, entitlement_id)
 ```
 
+### users table
+```sql
+- user_id (serial, primary key)
+- username (text)
+- email (text)
+- role (text)
+- app_user_id (uuid, foreign key to auth.users.id)
+- is_premium (boolean) - Gets updated by webhooks
+- premium_expires_at (timestamp) - Gets updated by webhooks
+- premium_will_renew (boolean) - Gets updated by webhooks
+```
+
 ## Anonymous User IDs
 
 **Your current schema does not support anonymous users** because `subscriptions.app_user_id` is a UUID foreign key to `auth.users(id)`.
@@ -98,10 +110,56 @@ RevenueCat sends anonymous IDs like `$RCAnonymousID:{random_string}` which are T
 
 **To handle anonymous users, you would need to modify your schema** to allow TEXT values in `app_user_id` or create a separate table for anonymous subscriptions.
 
+## Premium Status Updates
+
+The server automatically updates these fields in your `users` table based on subscription events:
+
+- `is_premium`: `true` if user has active subscriptions, `false` otherwise
+- `premium_expires_at`: Expiration date of the latest active subscription
+- `premium_will_renew`: `true` if the latest subscription will auto-renew
+
+### Important: User Records Must Exist
+
+For premium status to update, users **must exist in both**:
+1. `auth.users` (automatic with Supabase Auth)
+2. `public.users` (your app must create this record)
+
+### Required Signup Code
+
+In your user registration/signup process, add:
+
+```javascript
+// After successful Supabase auth signup
+const { data: authUser } = await supabase.auth.signUp({
+  email,
+  password
+});
+
+// Create public.users record
+await supabase.from('users').insert({
+  user_id: authUser.user.id, // SERIAL primary key (let DB auto-generate)
+  username: email.split('@')[0],
+  email: email,
+  role: 'user',
+  app_user_id: authUser.user.id, // UUID foreign key to auth.users
+  is_premium: false,
+  premium_expires_at: null,
+  premium_will_renew: null
+});
+```
+
+### Testing Premium Updates
+
+Run the test script to check your current setup:
+```bash
+npm run test-premium
+```
+
 ## Scripts
 
 - `npm start` - Start the server with Node.js
 - `npm run dev` - Start the server with nodemon for development
+- `npm run test-premium` - Test premium status update functionality
 
 ## Project Structure
 
